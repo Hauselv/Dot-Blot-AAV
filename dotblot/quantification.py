@@ -2,16 +2,23 @@ from __future__ import annotations
 
 import numpy as np
 
-from .background import make_local_window_mask, select_background_value, summarize_background
+from .background import (
+    evaluate_background_plane,
+    fit_background_plane,
+    make_local_window_mask,
+    select_background_value,
+    summarize_background,
+)
 from .masks import estimate_expected_area
-from .types import AnalysisConfig, GridConfig
+from .types import AnalysisConfig
 
 
 def quantify_spot(
     image: np.ndarray,
     spot_mask: np.ndarray,
     background_mask: np.ndarray,
-    grid_config: GridConfig,
+    roi_radius: float,
+    roi_shape: str,
     analysis_config: AnalysisConfig,
     global_background_summary: dict | None = None,
     center_x: float | None = None,
@@ -33,11 +40,15 @@ def quantify_spot(
             image.shape[:2],
             center_x=center_x,
             center_y=center_y,
-            roi_radius=grid_config.roi_radius,
+            roi_radius=roi_radius,
             window_scale=analysis_config.local_window_scale,
             spot_mask=spot_mask,
         )
-        background_summary = summarize_background(image[local_window_mask])
+        if analysis_config.background_mode.endswith("_plane"):
+            background_summary = fit_background_plane(image, local_window_mask)
+            background_summary["background_plane_value"] = evaluate_background_plane(background_summary, center_x, center_y)
+        else:
+            background_summary = summarize_background(image[local_window_mask])
         local_background_values = image[local_window_mask]
     elif analysis_config.background_mode.startswith("surface"):
         if surface_background_map is None:
@@ -46,7 +57,13 @@ def quantify_spot(
         background_summary = summarize_background(surface_values)
         local_background_values = surface_values
     else:
-        background_summary = summarize_background(local_background_values)
+        if analysis_config.background_mode.endswith("_plane"):
+            if center_x is None or center_y is None:
+                raise ValueError("Spot-Zentrum fuer planaren Background wurde nicht uebergeben.")
+            background_summary = fit_background_plane(image, background_mask)
+            background_summary["background_plane_value"] = evaluate_background_plane(background_summary, center_x, center_y)
+        else:
+            background_summary = summarize_background(local_background_values)
 
     background_value = select_background_value(background_summary, analysis_config.background_mode)
 
@@ -62,7 +79,7 @@ def quantify_spot(
     background_std = float(background_summary["background_std"]) if background_summary["background_n_pixels"] else np.nan
     snr = corrected_mean / (background_std + 1e-9) if np.isfinite(corrected_mean) and np.isfinite(background_std) else np.nan
 
-    expected_area = estimate_expected_area(grid_config.roi_radius, grid_config.roi_shape)
+    expected_area = estimate_expected_area(roi_radius, roi_shape)
     actual_area = int(spot_values.size)
     edge_clipped = actual_area < 0.9 * expected_area
     is_saturated = bool(
@@ -84,6 +101,7 @@ def quantify_spot(
         "background_median": background_summary["background_median"],
         "background_std": background_summary["background_std"],
         "background_n_pixels": background_summary["background_n_pixels"],
+        "background_fit_rmse": background_summary.get("background_fit_rmse", np.nan),
         "background_method": analysis_config.background_mode,
         "corrected_integrated_intensity": corrected_sum,
         "corrected_mean_intensity": corrected_mean,

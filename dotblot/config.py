@@ -17,8 +17,10 @@ POLARITY_OPTIONS = (
 BACKGROUND_OPTIONS = {
     "local_annulus_median": "Lokaler Annulus (Median)",
     "local_annulus_mean": "Lokaler Annulus (Mean)",
+    "local_annulus_plane": "Lokaler Annulus (Planarer Fit)",
     "local_window_median": "Lokales Fenster (Median)",
     "local_window_mean": "Lokales Fenster (Mean)",
+    "local_window_plane": "Lokales Fenster (Planarer Fit)",
     "surface_median": "Background Surface (Median)",
     "surface_mean": "Background Surface (Mean)",
     "global_median": "Globaler Hintergrund (Median)",
@@ -32,6 +34,10 @@ METADATA_PRESETS = (
 )
 
 ROI_SHAPES = ("circle", "square")
+LAYOUT_MODES = {
+    "grid": "Regulaeres Grid",
+    "free_spots": "Freie Spot-Detektion",
+}
 
 DEFAULT_ROWS = 4
 DEFAULT_COLS = 6
@@ -55,6 +61,7 @@ def default_grid_config() -> GridConfig:
 
 def default_analysis_config() -> AnalysisConfig:
     return AnalysisConfig(
+        layout_mode="grid",
         polarity_mode="Auto",
         auto_detected_polarity="Unbestimmt",
         invert_applied=False,
@@ -74,6 +81,19 @@ def default_analysis_config() -> AnalysisConfig:
         linear_range_exclude_saturated=True,
         local_window_scale=3.5,
         surface_sigma=25.0,
+        detection_background_sigma=20.0,
+        detection_min_sigma=1.5,
+        detection_max_sigma=8.0,
+        detection_num_sigma=12,
+        detection_threshold_rel=0.12,
+        detection_overlap=0.5,
+        detection_min_distance=8.0,
+        detection_crop_enabled=False,
+        detection_crop_box=None,
+        adaptive_roi_enabled=True,
+        adaptive_roi_threshold_rel=0.28,
+        adaptive_roi_min_radius=3.0,
+        adaptive_roi_max_radius=18.0,
     )
 
 

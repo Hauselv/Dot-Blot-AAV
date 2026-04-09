@@ -26,20 +26,22 @@ def create_qc_overlay(image, results: pd.DataFrame, grid_config: GridConfig, tit
     for _, row in results.iterrows():
         color = _spot_color(row)
         center = (row["center_x"], row["center_y"])
-        if grid_config.roi_shape == "circle":
-            roi_patch = Circle(center, radius=grid_config.roi_radius, fill=False, linewidth=1.5, edgecolor=color)
+        roi_radius = float(row.get("roi_radius", grid_config.roi_radius))
+        roi_shape = str(row.get("roi_shape", grid_config.roi_shape))
+        if roi_shape == "circle":
+            roi_patch = Circle(center, radius=roi_radius, fill=False, linewidth=1.5, edgecolor=color)
         else:
             roi_patch = Rectangle(
-                (row["center_x"] - grid_config.roi_radius, row["center_y"] - grid_config.roi_radius),
-                width=2 * grid_config.roi_radius,
-                height=2 * grid_config.roi_radius,
+                (row["center_x"] - roi_radius, row["center_y"] - roi_radius),
+                width=2 * roi_radius,
+                height=2 * roi_radius,
                 fill=False,
                 linewidth=1.5,
                 edgecolor=color,
             )
         bg_patch = Circle(
             center,
-            radius=grid_config.roi_radius * grid_config.annulus_outer_scale,
+            radius=roi_radius * grid_config.annulus_outer_scale,
             fill=False,
             linewidth=1.0,
             linestyle="--",
@@ -49,8 +51,8 @@ def create_qc_overlay(image, results: pd.DataFrame, grid_config: GridConfig, tit
         ax.add_patch(roi_patch)
         ax.add_patch(bg_patch)
         ax.text(
-            row["center_x"] + grid_config.roi_radius * 0.2,
-            row["center_y"] - grid_config.roi_radius * 0.2,
+            row["center_x"] + roi_radius * 0.2,
+            row["center_y"] - roi_radius * 0.2,
             str(row["spot_id"]),
             color=color,
             fontsize=8,

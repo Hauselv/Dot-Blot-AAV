@@ -43,6 +43,7 @@ class AnalysisConfig:
     weak_spot_snr_threshold: float
     reference_sample: Optional[str]
     normalization_mode: str
+    layout_mode: str = "grid"
     log_dilution_axis: bool = False
     center_refinement_enabled: bool = True
     center_refinement_radius: float = 5.0
@@ -51,3 +52,16 @@ class AnalysisConfig:
     linear_range_exclude_saturated: bool = True
     local_window_scale: float = 3.5
     surface_sigma: float = 25.0
+    detection_background_sigma: float = 20.0
+    detection_min_sigma: float = 1.5
+    detection_max_sigma: float = 8.0
+    detection_num_sigma: int = 12
+    detection_threshold_rel: float = 0.12
+    detection_overlap: float = 0.5
+    detection_min_distance: float = 8.0
+    detection_crop_enabled: bool = False
+    detection_crop_box: Optional[tuple[float, float, float, float]] = None
+    adaptive_roi_enabled: bool = True
+    adaptive_roi_threshold_rel: float = 0.28
+    adaptive_roi_min_radius: float = 3.0
+    adaptive_roi_max_radius: float = 18.0

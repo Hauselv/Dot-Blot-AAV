@@ -32,14 +32,34 @@ def estimate_expected_area(radius: float, shape_name: str) -> float:
     return float((2 * radius) ** 2)
 
 
-def build_masks(shape: tuple[int, int], center_x: float, center_y: float, config: GridConfig) -> tuple[np.ndarray, np.ndarray]:
-    spot_mask = create_spot_mask(shape, center_x, center_y, config.roi_radius, config.roi_shape)
+def build_masks_for_spot(
+    shape: tuple[int, int],
+    center_x: float,
+    center_y: float,
+    roi_radius: float,
+    roi_shape: str,
+    annulus_inner_scale: float,
+    annulus_outer_scale: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    spot_mask = create_spot_mask(shape, center_x, center_y, roi_radius, roi_shape)
     annulus_mask = create_annulus_mask(
         shape,
         center_x,
         center_y,
-        inner_radius=config.roi_radius * config.annulus_inner_scale,
-        outer_radius=config.roi_radius * config.annulus_outer_scale,
+        inner_radius=roi_radius * annulus_inner_scale,
+        outer_radius=roi_radius * annulus_outer_scale,
     )
     annulus_mask &= ~spot_mask
     return spot_mask, annulus_mask
+
+
+def build_masks(shape: tuple[int, int], center_x: float, center_y: float, config: GridConfig) -> tuple[np.ndarray, np.ndarray]:
+    return build_masks_for_spot(
+        shape=shape,
+        center_x=center_x,
+        center_y=center_y,
+        roi_radius=config.roi_radius,
+        roi_shape=config.roi_shape,
+        annulus_inner_scale=config.annulus_inner_scale,
+        annulus_outer_scale=config.annulus_outer_scale,
+    )

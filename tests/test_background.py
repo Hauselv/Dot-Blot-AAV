@@ -83,3 +83,40 @@ def test_surface_background_estimates_smooth_background_level():
     assert len(results) == 1
     assert abs(results.loc[0, "background_value"] - expected_background) < 3.5
     assert results.loc[0, "background_method"] == "surface_median"
+
+
+def test_local_window_plane_follows_gradient_better_than_median():
+    yy, xx = np.mgrid[:120, :120]
+    background = 8.0 + 0.09 * xx + 0.04 * yy
+    image = background + 15.0 * np.exp(-(((xx - 72) ** 2 + (yy - 50) ** 2) / (2 * 4.5**2)))
+
+    grid_config = GridConfig(
+        rows=1,
+        cols=1,
+        anchor_x=72.0,
+        anchor_y=50.0,
+        pitch_x=20.0,
+        pitch_y=20.0,
+        rotation_deg=0.0,
+        roi_radius=6.0,
+    )
+    median_results = run_quantification(
+        image.astype(np.float32),
+        grid_config,
+        _single_spot_metadata(),
+        _base_analysis_config("local_window_median"),
+    )
+    plane_results = run_quantification(
+        image.astype(np.float32),
+        grid_config,
+        _single_spot_metadata(),
+        _base_analysis_config("local_window_plane"),
+    )
+
+    expected_background = float(background[50, 72])
+    median_error = abs(median_results.loc[0, "background_value"] - expected_background)
+    plane_error = abs(plane_results.loc[0, "background_value"] - expected_background)
+
+    assert plane_results.loc[0, "background_method"] == "local_window_plane"
+    assert plane_results.loc[0, "background_fit_rmse"] >= 0
+    assert plane_error <= median_error

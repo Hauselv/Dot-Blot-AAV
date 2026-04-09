@@ -70,6 +70,19 @@ def plot_grid_heatmap(results: pd.DataFrame, value_column: str):
         ax.set_axis_off()
         return fig
 
+    if "row" not in results.columns or "col" not in results.columns:
+        fig, ax = plt.subplots()
+        ax.set_axis_off()
+        ax.set_title("Keine Grid-Heatmap fuer diesen Analysemodus verfuegbar")
+        return fig
+
+    duplicate_positions = results.duplicated(subset=["row", "col"]).any()
+    if duplicate_positions:
+        fig, ax = plt.subplots()
+        ax.set_axis_off()
+        ax.set_title("Grid-Heatmap ist fuer freie Spot-Layouts nicht eindeutig")
+        return fig
+
     heatmap = results.pivot(index="row", columns="col", values=value_column).sort_index(ascending=True)
     fig, ax = plt.subplots(figsize=(6, 4))
     im = ax.imshow(heatmap.to_numpy(), cmap="viridis")
