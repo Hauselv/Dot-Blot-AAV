@@ -55,8 +55,19 @@ except ImportError:
 try:
     if not hasattr(st_image_module, "image_to_url"):
         from streamlit.elements.lib.image_utils import image_to_url as _image_to_url
+        from streamlit.elements.lib.layout_utils import LayoutConfig
 
-        st_image_module.image_to_url = _image_to_url
+        def _image_to_url_compat(image, width, clamp, channels, output_format, image_id):
+            return _image_to_url(
+                image=image,
+                layout_config=LayoutConfig(width=width),
+                clamp=clamp,
+                channels=channels,
+                output_format=output_format,
+                image_id=image_id,
+            )
+
+        st_image_module.image_to_url = _image_to_url_compat
     from streamlit_drawable_canvas import st_canvas
 
     HAS_DRAWABLE_CANVAS = True
