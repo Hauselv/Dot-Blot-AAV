@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .background import summarize_background
+from .background import estimate_background_surface, summarize_background
 from .grid import generate_grid_centers, refine_grid_centers
 from .masks import build_masks
 from .normalization import normalize_to_reference
@@ -29,8 +29,14 @@ def run_quantification(
     image_shape = oriented_image.shape[:2]
 
     global_summary = None
+    surface_background_map = None
     if analysis_config.background_mode.startswith("global"):
         global_summary = summarize_background(oriented_image.reshape(-1))
+    if analysis_config.background_mode.startswith("surface"):
+        surface_background_map = estimate_background_surface(
+            oriented_image,
+            sigma=analysis_config.surface_sigma,
+        )
 
     records = []
     for idx, meta_row in metadata.iterrows():
@@ -43,6 +49,9 @@ def run_quantification(
             grid_config=grid_config,
             analysis_config=analysis_config,
             global_background_summary=global_summary,
+            center_x=float(center_x),
+            center_y=float(center_y),
+            surface_background_map=surface_background_map,
         )
         record = meta_row.to_dict()
         record.update({"center_x": float(center_x), "center_y": float(center_y)})

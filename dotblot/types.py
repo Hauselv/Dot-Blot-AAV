@@ -49,3 +49,5 @@ class AnalysisConfig:
     linear_range_x_mode: str = "inverse_dilution"
     linear_range_min_points: int = 3
     linear_range_exclude_saturated: bool = True
+    local_window_scale: float = 3.5
+    surface_sigma: float = 25.0

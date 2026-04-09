@@ -4,7 +4,7 @@ from math import cos, radians, sin
 
 import numpy as np
 import pandas as pd
-from scipy.ndimage import gaussian_filter1d, gaussian_filter
+from scipy.ndimage import gaussian_filter1d, gaussian_filter, uniform_filter
 from scipy.signal import find_peaks
 
 from .types import GridConfig
@@ -75,21 +75,99 @@ def _estimate_peak_positions(profile: np.ndarray, expected_count: int) -> np.nda
     return np.linspace(margin, n - margin, expected_count, dtype=np.float32)
 
 
+def _regularize_positions(positions: np.ndarray, expected_count: int, axis_length: int) -> np.ndarray:
+    positions = np.sort(np.asarray(positions, dtype=np.float32))
+    if expected_count <= 0:
+        return np.array([], dtype=np.float32)
+    if positions.size == expected_count:
+        return positions
+    if positions.size <= 1:
+        margin = axis_length * 0.15
+        return np.linspace(margin, axis_length - margin, expected_count, dtype=np.float32)
+
+    pitch = float(np.median(np.diff(positions)))
+    pitch = max(pitch, 2.0)
+    anchor = float(positions[0])
+
+    if positions.size < expected_count:
+        candidate = anchor + pitch * np.arange(expected_count, dtype=np.float32)
+        if candidate[-1] > axis_length - 1:
+            anchor = max(0.0, axis_length - 1 - pitch * (expected_count - 1))
+            candidate = anchor + pitch * np.arange(expected_count, dtype=np.float32)
+        return candidate
+
+    best = positions[:expected_count]
+    best_error = np.inf
+    for start in range(0, positions.size - expected_count + 1):
+        window = positions[start : start + expected_count]
+        local_pitch = float(np.median(np.diff(window))) if expected_count > 1 else pitch
+        local_pitch = max(local_pitch, 2.0)
+        candidate = window[0] + local_pitch * np.arange(expected_count, dtype=np.float32)
+        error = float(np.mean(np.abs(window - candidate)))
+        if error < best_error:
+            best_error = error
+            best = candidate
+    return best
+
+
+def _template_response(image: np.ndarray, radius: float) -> np.ndarray:
+    sigma_signal = max(1.0, radius / 2.5)
+    sigma_background = max(sigma_signal * 2.5, sigma_signal + 2.0)
+    signal = gaussian_filter(image.astype(np.float32), sigma=sigma_signal)
+    background = gaussian_filter(signal, sigma=sigma_background)
+    response = signal - background
+    return np.clip(response, 0.0, None)
+
+
 def auto_initialize_grid(image: np.ndarray, rows: int, cols: int, current_config: GridConfig | None = None) -> GridConfig:
     image = np.asarray(image, dtype=np.float32)
     base = suggest_grid_config(image.shape, rows, cols) if current_config is None else current_config
-    signal = image - float(np.percentile(image, 40))
-    signal = np.clip(signal, 0.0, None)
-    signal = gaussian_filter(signal, sigma=1.0)
+    signal = _template_response(image, radius=base.roi_radius)
+    if not np.any(signal > 0):
+        signal = np.clip(image - float(np.percentile(image, 40)), 0.0, None)
+        signal = gaussian_filter(signal, sigma=1.0)
 
     col_profile = np.sum(signal, axis=0)
     row_profile = np.sum(signal, axis=1)
-    x_positions = _estimate_peak_positions(col_profile, cols)
-    y_positions = _estimate_peak_positions(row_profile, rows)
+    x_positions = _regularize_positions(_estimate_peak_positions(col_profile, cols), cols, image.shape[1])
+    y_positions = _regularize_positions(_estimate_peak_positions(row_profile, rows), rows, image.shape[0])
 
     pitch_x = float(np.median(np.diff(x_positions))) if x_positions.size > 1 else base.pitch_x
     pitch_y = float(np.median(np.diff(y_positions))) if y_positions.size > 1 else base.pitch_y
     roi_radius = min(pitch_x, pitch_y) * 0.24 if min(pitch_x, pitch_y) > 0 else base.roi_radius
+
+    # A second pass anchors the regular grid to local evidence, which helps when
+    # one or more spots are faint enough to disappear from the 1D peak profiles.
+    provisional = GridConfig(
+        rows=rows,
+        cols=cols,
+        anchor_x=float(x_positions[0]) if x_positions.size else base.anchor_x,
+        anchor_y=float(y_positions[0]) if y_positions.size else base.anchor_y,
+        pitch_x=float(max(2.0, pitch_x)),
+        pitch_y=float(max(2.0, pitch_y)),
+        rotation_deg=0.0 if current_config is None else current_config.rotation_deg,
+        roi_radius=float(max(4.0, roi_radius if np.isfinite(roi_radius) else base.roi_radius)),
+        roi_shape=base.roi_shape,
+        annulus_inner_scale=base.annulus_inner_scale,
+        annulus_outer_scale=base.annulus_outer_scale,
+    )
+    provisional_centers = generate_grid_centers(provisional)
+    if provisional_centers.size:
+        search_radius = max(
+            provisional.roi_radius,
+            min(provisional.pitch_x, provisional.pitch_y) * 0.35,
+        )
+        refined = refine_grid_centers(
+            image,
+            provisional_centers,
+            roi_radius=provisional.roi_radius,
+            search_radius=search_radius,
+        ).reshape(rows, cols, 2)
+        x_positions = _regularize_positions(np.median(refined[:, :, 0], axis=0), cols, image.shape[1])
+        y_positions = _regularize_positions(np.median(refined[:, :, 1], axis=1), rows, image.shape[0])
+        pitch_x = float(np.median(np.diff(x_positions))) if x_positions.size > 1 else provisional.pitch_x
+        pitch_y = float(np.median(np.diff(y_positions))) if y_positions.size > 1 else provisional.pitch_y
+        roi_radius = min(pitch_x, pitch_y) * 0.24 if min(pitch_x, pitch_y) > 0 else provisional.roi_radius
 
     return GridConfig(
         rows=rows,
@@ -113,6 +191,7 @@ def refine_grid_centers(
     search_radius: float,
 ) -> np.ndarray:
     image = np.asarray(image, dtype=np.float32)
+    response_map = _template_response(image, radius=roi_radius)
     refined = []
     window_radius = int(np.ceil(max(roi_radius, search_radius) + 2))
 
@@ -124,6 +203,7 @@ def refine_grid_centers(
         ymin = max(0, int(np.floor(cy - window_radius)))
         ymax = min(image.shape[0], int(np.ceil(cy + window_radius + 1)))
         patch = image[ymin:ymax, xmin:xmax]
+        response_patch = response_map[ymin:ymax, xmin:xmax]
         if patch.size == 0:
             refined.append([cx, cy])
             continue
@@ -131,6 +211,8 @@ def refine_grid_centers(
         background = float(np.median(patch))
         signal = np.clip(patch - background, 0.0, None)
         signal = gaussian_filter(signal, sigma=max(1.0, roi_radius / 4.0))
+        signal = 0.45 * signal + 0.55 * response_patch
+        signal = uniform_filter(signal, size=max(2, int(np.ceil(roi_radius / 2.5))))
 
         yy, xx = np.mgrid[ymin:ymax, xmin:xmax]
         search_mask = (xx - cx) ** 2 + (yy - cy) ** 2 <= search_radius**2
@@ -138,14 +220,22 @@ def refine_grid_centers(
             refined.append([cx, cy])
             continue
 
-        masked_signal = np.where(search_mask, signal, -np.inf)
-        if not np.isfinite(masked_signal).any() or np.nanmax(masked_signal) <= 0:
+        masked_signal = np.where(search_mask, signal, 0.0)
+        peak_value = float(np.max(masked_signal))
+        if peak_value <= 0:
             refined.append([cx, cy])
             continue
 
-        local_index = np.unravel_index(np.nanargmax(masked_signal), masked_signal.shape)
-        refined_x = float(xmin + local_index[1])
-        refined_y = float(ymin + local_index[0])
+        threshold = max(peak_value * 0.7, float(np.percentile(masked_signal[search_mask], 85)))
+        weights = np.where(masked_signal >= threshold, masked_signal, 0.0)
+        total = float(np.sum(weights))
+        if total <= 0:
+            local_index = np.unravel_index(np.argmax(masked_signal), masked_signal.shape)
+            refined_x = float(xmin + local_index[1])
+            refined_y = float(ymin + local_index[0])
+        else:
+            refined_x = float(np.sum(xx * weights) / total)
+            refined_y = float(np.sum(yy * weights) / total)
         refined.append([refined_x, refined_y])
 
     return np.asarray(refined, dtype=np.float32)

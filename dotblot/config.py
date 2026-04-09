@@ -17,6 +17,10 @@ POLARITY_OPTIONS = (
 BACKGROUND_OPTIONS = {
     "local_annulus_median": "Lokaler Annulus (Median)",
     "local_annulus_mean": "Lokaler Annulus (Mean)",
+    "local_window_median": "Lokales Fenster (Median)",
+    "local_window_mean": "Lokales Fenster (Mean)",
+    "surface_median": "Background Surface (Median)",
+    "surface_mean": "Background Surface (Mean)",
     "global_median": "Globaler Hintergrund (Median)",
     "global_mean": "Globaler Hintergrund (Mean)",
 }
@@ -68,6 +72,8 @@ def default_analysis_config() -> AnalysisConfig:
         linear_range_x_mode="inverse_dilution",
         linear_range_min_points=3,
         linear_range_exclude_saturated=True,
+        local_window_scale=3.5,
+        surface_sigma=25.0,
     )
 
 
