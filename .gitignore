@@ -1,0 +1,8 @@
+.venv/
+.pytest_cache/
+__pycache__/
+.repo_inspect/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
